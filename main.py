@@ -3,6 +3,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import plotly.graph_objects as go
+import calendar
+import datetime
 
 # Load credentials from JSON key file
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -12,9 +14,8 @@ client = gspread.authorize(creds)
 sheet_id = '1WpsBMMpp9KC3YYhySeAq1ZQ9mp5KFOrrlJlm-zqttb4'
 sheet = client.open_by_key(sheet_id).sheet1  # Open the first sheet in the Google Sheet
 
-
-# Function to get data based on the selected part and date
-def get_data(part, eng, store_id , selected_date):
+# Function to get data based on the selected part, eng, store_id, and date
+def get_data(part, eng, store_id, selected_date):
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
     df["รหัสร้าน"] = df["รหัสร้าน"].astype(str)
@@ -32,7 +33,7 @@ def get_data(part, eng, store_id , selected_date):
 st.title("Safty-CAFM")
 
 # Add a sidebar for navigation
-page = st.sidebar.selectbox("Select Page", ["ข้อมูลรวม", "ตรวจสอบตาม Area","ตรวจสอบตาม ผู้รับเหมา"])
+page = st.sidebar.selectbox("Select Page", ["ข้อมูลรวม", "ตรวจสอบตาม Area", "ตรวจสอบตาม ผู้รับเหมา", "รายงานรายเดือน"])
 
 # Get the list of parts from the Google Sheet
 engs = sheet.col_values(5)[1:]
@@ -54,7 +55,7 @@ selected_store_id = st.selectbox("เลือก รหัสร้าน", ["�
 selected_date = st.date_input("Select Date")
 
 # Get data based on the selected part and date
-df = get_data(selected_part, selected_eng , selected_store_id , selected_date.strftime("%Y-%m-%d"))
+df = get_data(selected_part, selected_eng, selected_store_id, selected_date.strftime("%Y-%m-%d"))
 
 if page == "ข้อมูลรวม":
     # Display the data
@@ -181,7 +182,7 @@ elif page == "ตรวจสอบตาม Area":
 
         fig.update_layout(
             barmode='group',
-            title="Helmet Detection Data by Part",
+            title="จำนวนการใส่หมวกตาม Area",
             xaxis_title="Part",
             yaxis_title="Count",
             legend_title="Type",
@@ -320,7 +321,7 @@ elif page == "ตรวจสอบตาม ผู้รับเหมา":
 
         fig.update_layout(
             barmode='group',
-            title="Helmet Detection Data by Part",
+            title="จำนวนการใส่หมวกตาม ผู้รับเหมา",
             xaxis_title="Part",
             yaxis_title="Count",
             legend_title="Type",
@@ -435,3 +436,149 @@ elif page == "ตรวจสอบตาม ผู้รับเหมา":
 
     else:
         st.write("No data available for the selected filters.")
+
+elif page == "รายงานรายเดือน":
+    current_date = datetime.datetime.now()
+    default_month = current_date.month
+    default_year = current_date.year
+    selected_month = st.sidebar.selectbox("Select Month", range(1, 13), index=default_month - 1)
+    selected_year = st.sidebar.selectbox("Select Year", range(2020, 2025), index=default_year - 2020)
+
+    # Get the data for the selected month
+    month_start = f"{selected_year}-{selected_month:02d}-01"
+    month_end = f"{selected_year}-{selected_month:02d}-{calendar.monthrange(selected_year, selected_month)[1]}"
+    df_month = get_data(selected_part, selected_eng, selected_store_id, "")
+    df_month = df_month[(df_month["เวลา"] >= month_start) & (df_month["เวลา"] <= month_end)]
+
+    if not df_month.empty:
+        helmet_count = df_month["จำนวนคนใส่หมวก"].sum()
+        no_helmet_count = df_month["คนไม่ใส่หมวก"].sum()
+        person_count = df_month["คนทั้งหมด"].sum()
+       
+        
+        # Insights
+        total_days = df_month["เวลา"].nunique()
+        average_helmet_per_day = helmet_count / total_days
+        average_no_helmet_per_day = no_helmet_count / total_days
+
+        # Vendor-wise analysis
+        vendor_analysis = df_month.groupby("ผู้รับเหมา").agg({
+            "จำนวนคนใส่หมวก": "sum",
+            "คนไม่ใส่หมวก": "sum",
+            "คนทั้งหมด": "sum"
+        }).reset_index()
+
+        # Display the data
+        st.write(f"### Monthly Report for {calendar.month_name[selected_month]} {selected_year}")
+
+        # Overall monthly report
+        st.write(f"#### Overall Monthly Report:")
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=["Wearing Helmet", "Not Wearing Helmet"],
+            y=[helmet_count, no_helmet_count],
+            text=[helmet_count, no_helmet_count],
+            textposition='auto',
+            marker_color=["#8bd49c", "#ff7f7f"],
+        ))
+        fig.update_layout(title_text='Monthly Helmet Usage Statistics')
+        st.plotly_chart(fig),
+
+        # HTML and CSS for insights and summary
+        html_content = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Monthly Report</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f0f0f0;
+                    padding: 20px;
+                }}
+                .report {{
+                    background-color: #ffffff;
+                    padding: 30px;
+                    border-radius: 20px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                    text-align: center;
+                    max-width: 800px;
+                    margin: auto;
+                }}
+                .report h1 {{
+                    color: #333333;
+                    font-size: 2em;
+                    margin: 0 0 20px;
+                }}
+                .summary {{
+                    display: flex;
+                    flex-wrap: wrap;
+                    justify-content: space-around;
+                    margin-bottom: 20px;
+                }}
+                .summary div {{
+                    background-color: #f0f0f0;
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin: 10px;
+                    text-align: center;
+                    flex: 1 1 calc(33% - 40px);
+                    box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+                }}
+                .summary div h2 {{
+                    margin: 0;
+                    font-size: 1.5em;
+                    color: #555555;
+                }}
+                .summary div p {{
+                    margin: 10px 0 0;
+                    font-size: 1.2em;
+                    color: #777777;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="report">
+                <h1>รายงานประจำเดือน {calendar.month_name[selected_month]} {selected_year}</h1>
+                <div class="summary">
+                    <div>
+                        <h2>จำนวนคนใส่หมวก</h2>
+                        <p>{helmet_count} คน</p>
+                    </div>
+                    <div>
+                        <h2>จำนวนคนไม่ใส่หมวก</h2>
+                        <p>{no_helmet_count} คน</p>
+                    </div>
+                    <div>
+                        <h2>จำนวนคนทั้งหมด</h2>
+                        <p>{person_count} คน</p>
+                    </div>
+                    <div>
+                        <h2>เฉลี่ยจำนวนคนใส่หมวกต่อวัน</h2>
+                        <p>{average_helmet_per_day:.2f} คน</p>
+                    </div>
+                    <div>
+                        <h2>เฉลี่ยจำนวนคนไม่ใส่หมวกต่อวัน</h2>
+                        <p>{average_no_helmet_per_day:.2f} คน</p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        # Vendor Analysis
+        
+        st.markdown(html_content , unsafe_allow_html=True)
+        st.write(f"#### Vendor-wise Analysis:")
+        for index, row in vendor_analysis.iterrows():
+            st.write(f"##### ผู้รับเหมา: {row['ผู้รับเหมา']}")
+            st.write(f"จำนวนคนใส่หมวก: {row['จำนวนคนใส่หมวก']} คน")
+            st.write(f"จำนวนคนไม่ใส่หมวก: {row['คนไม่ใส่หมวก']} คน")
+            st.write(f"จำนวนคนทั้งหมด: {row['คนทั้งหมด']} คน")
+            st.write("---")  # Separator between vendors
+
+    else:
+        st.write(f"No data available for {calendar.month_name[selected_month]} {selected_year}.")
