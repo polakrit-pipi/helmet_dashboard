@@ -482,7 +482,7 @@ elif page == "รายงานรายเดือน":
             marker_color=["#8bd49c", "#ff7f7f"],
         ))
         fig.update_layout(title_text='Monthly Helmet Usage Statistics')
-        st.plotly_chart(fig),
+        st.plotly_chart(fig)
 
         # HTML and CSS for insights and summary
         html_content = f"""
